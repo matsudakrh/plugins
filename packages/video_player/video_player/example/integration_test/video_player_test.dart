@@ -162,5 +162,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(_controller.value.isPlaying, true);
     }, skip: kIsWeb); // Web does not support local assets.
+
+    testWidgets('test Android video is rotated for landscapeRight',
+        (WidgetTester tester) async {
+      _controller =
+          VideoPlayerController.asset('assets/keyboard-landscape.mp4');
+
+      VideoPlayer player = VideoPlayer(_controller);
+      await tester.pumpWidget(player);
+
+      expect(find.byType(Transform), findsOneWidget);
+    }, skip: kIsWeb); // TODO(KyleFin): Skip for non-Android tests?
+
+    testWidgets('test Android video is not rotated for landscapeLeft',
+        (WidgetTester tester) async {
+      VideoPlayer player = VideoPlayer(_controller);
+      await tester.pumpWidget(player);
+
+      expect(find.byType(Transform), findsNothing);
+    }, skip: kIsWeb); // TODO(KyleFin): Skip for non-Android tests?
   });
 }
