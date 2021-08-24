@@ -34,7 +34,7 @@ void main() {
 
     testWidgets(
       'reports buffering status',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         VideoPlayerController networkController = VideoPlayerController.network(
           'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
         );
@@ -66,7 +66,7 @@ void main() {
 
         expect(networkController.value.isPlaying, false);
         expect(networkController.value.position,
-                (Duration position) => position > const Duration(seconds: 0));
+          (Duration position) => position > const Duration(seconds: 0));
 
         await started;
         expect(startedBuffering, true);
@@ -79,7 +79,7 @@ void main() {
 
     testWidgets(
       'live stream duration != 0',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         VideoPlayerController networkController = VideoPlayerController.network(
           'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8',
         );
@@ -89,14 +89,14 @@ void main() {
         // Live streams should have either a positive duration or C.TIME_UNSET if the duration is unknown
         // See https://exoplayer.dev/doc/reference/com/google/android/exoplayer2/Player.html#getDuration--
         expect(networkController.value.duration,
-                (Duration duration) => duration != Duration.zero);
+            (Duration duration) => duration != Duration.zero);
       },
       skip: (kIsWeb),
     );
 
     testWidgets(
       'can be played',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         await _controller.initialize();
         // Mute to allow playing without DOM interaction on Web.
         // See https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
@@ -107,13 +107,13 @@ void main() {
 
         expect(_controller.value.isPlaying, true);
         expect(_controller.value.position,
-                (Duration position) => position > const Duration(seconds: 0));
+            (Duration position) => position > const Duration(seconds: 0));
       },
     );
 
     testWidgets(
       'can seek',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         await _controller.initialize();
 
         await _controller.seekTo(const Duration(seconds: 3));
@@ -124,7 +124,7 @@ void main() {
 
     testWidgets(
       'can be paused',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         await _controller.initialize();
         // Mute to allow playing without DOM interaction on Web.
         // See https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
@@ -145,7 +145,7 @@ void main() {
 
     testWidgets(
       'stay paused when seeking after video completed',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         await _controller.initialize();
         // Mute to allow playing without DOM interaction on Web.
         // See https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
@@ -168,7 +168,7 @@ void main() {
 
     testWidgets(
       'do not exceed duration on play after video completed',
-          (WidgetTester tester) async {
+      (WidgetTester tester) async {
         await _controller.initialize();
         // Mute to allow playing without DOM interaction on Web.
         // See https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
@@ -189,37 +189,37 @@ void main() {
     );
 
     testWidgets('test video player view with local asset',
-            (WidgetTester tester) async {
-          Future<bool> started() async {
-            await _controller.initialize();
-            await _controller.play();
-            return true;
-          }
+        (WidgetTester tester) async {
+      Future<bool> started() async {
+        await _controller.initialize();
+        await _controller.play();
+        return true;
+      }
 
-          await tester.pumpWidget(Material(
-            elevation: 0,
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: Center(
-                child: FutureBuilder<bool>(
-                  future: started(),
-                  builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
-                    if (snapshot.data == true) {
-                      return AspectRatio(
-                        aspectRatio: _controller.value.aspectRatio,
-                        child: VideoPlayer(_controller),
-                      );
-                    } else {
-                      return const Text('waiting for video to load');
-                    }
-                  },
-                ),
-              ),
+      await tester.pumpWidget(Material(
+        elevation: 0,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: FutureBuilder<bool>(
+              future: started(),
+              builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+                if (snapshot.data == true) {
+                  return AspectRatio(
+                    aspectRatio: _controller.value.aspectRatio,
+                    child: VideoPlayer(_controller),
+                  );
+                } else {
+                  return const Text('waiting for video to load');
+                }
+              },
             ),
-          ));
+          ),
+        ),
+      ));
 
-          await tester.pumpAndSettle();
-          expect(_controller.value.isPlaying, true);
-        }, skip: kIsWeb); // Web does not support local assets.
+      await tester.pumpAndSettle();
+      expect(_controller.value.isPlaying, true);
+    }, skip: kIsWeb); // Web does not support local assets.
   });
 }
