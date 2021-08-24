@@ -66,7 +66,7 @@ void main() {
 
         expect(networkController.value.isPlaying, false);
         expect(networkController.value.position,
-          (Duration position) => position > const Duration(seconds: 0));
+            (Duration position) => position > const Duration(seconds: 0));
 
         await started;
         expect(startedBuffering, true);
