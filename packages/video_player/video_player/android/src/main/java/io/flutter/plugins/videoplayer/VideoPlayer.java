@@ -10,6 +10,7 @@ import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
 import android.content.Context;
 import android.net.Uri;
 import android.view.Surface;
+import androidx.annotation.VisibleForTesting;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.Format;
@@ -50,13 +51,32 @@ final class VideoPlayer {
 
   private final TextureRegistry.SurfaceTextureEntry textureEntry;
 
-  private QueuingEventSink eventSink = new QueuingEventSink();
+  @VisibleForTesting QueuingEventSink eventSink = new QueuingEventSink();
 
   private final EventChannel eventChannel;
 
-  private boolean isInitialized = false;
+  @VisibleForTesting boolean isInitialized = false;
 
   private final VideoPlayerOptions options;
+
+  VideoPlayer(
+          Context context,
+          EventChannel eventChannel,
+          TextureRegistry.SurfaceTextureEntry textureEntry,
+          String dataSource,
+          String formatHint,
+          Map<String, String> httpHeaders,
+          VideoPlayerOptions options) {
+    this(
+            context,
+            eventChannel,
+            textureEntry,
+            dataSource,
+            formatHint,
+            httpHeaders,
+            options,
+            null);
+  }
 
   VideoPlayer(
       Context context,
@@ -65,12 +85,17 @@ final class VideoPlayer {
       String dataSource,
       String formatHint,
       Map<String, String> httpHeaders,
-      VideoPlayerOptions options) {
+      VideoPlayerOptions options,
+      SimpleExoPlayer exoPlayer) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
     this.options = options;
 
-    exoPlayer = new SimpleExoPlayer.Builder(context).build();
+    if (exoPlayer != null) {  // Skip remaining setup in tests if using a mock exoPlayer.
+      this.exoPlayer = exoPlayer;
+      return;
+    }
+    this.exoPlayer = new SimpleExoPlayer.Builder(context).build();
 
     Uri uri = Uri.parse(dataSource);
 
@@ -90,8 +115,8 @@ final class VideoPlayer {
     }
 
     MediaSource mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint, context);
-    exoPlayer.setMediaSource(mediaSource);
-    exoPlayer.prepare();
+    this.exoPlayer.setMediaSource(mediaSource);
+    this.exoPlayer.prepare();
 
     setupVideoPlayer(eventChannel, textureEntry);
   }
@@ -264,7 +289,8 @@ final class VideoPlayer {
   }
 
   @SuppressWarnings("SuspiciousNameCombination")
-  private void sendInitialized() {
+  @VisibleForTesting
+  void sendInitialized() {
     if (isInitialized) {
       Map<String, Object> event = new HashMap<>();
       event.put("event", "initialized");
