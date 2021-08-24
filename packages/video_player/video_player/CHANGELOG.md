@@ -1,5 +1,6 @@
-## NEXT
+## 2.1.15
 
+* Added rotation on Android for videos recorded in landscapeRight Fixes [#60327](https://github.com/flutter/flutter/issues/60327).
 * Updated Android lint settings.
 
 ## 2.1.14
