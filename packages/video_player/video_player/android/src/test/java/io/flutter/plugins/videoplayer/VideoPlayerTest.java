@@ -40,7 +40,7 @@ public class VideoPlayerTest {
             "",
             new HashMap<String, String>(),
             mock(VideoPlayerOptions.class),
-            null
+            mockExoPlayer
     );
     QueuingEventSink mockEventSink = mock(QueuingEventSink.class);
     player.eventSink = mockEventSink;
