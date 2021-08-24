@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -118,7 +118,7 @@ class CameraValue {
   /// Whether setting the focus point is supported.
   final bool focusPointSupported;
 
-  /// The current device orientation.
+  /// The current device UI orientation.
   final DeviceOrientation deviceOrientation;
 
   /// The currently locked capture orientation.
