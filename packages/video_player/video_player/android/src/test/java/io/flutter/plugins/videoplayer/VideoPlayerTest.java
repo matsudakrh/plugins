@@ -10,12 +10,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.content.Context;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
-import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -28,17 +26,13 @@ public class VideoPlayerTest {
   }
 
   @Test
-  public void videoPlayerSendInitializedSetsRotationForRotationDegrees180() {
+  public void videoPlayerSendInitializedSetsRotationCorrectionForRotationDegrees180() {
     Format format = new Format.Builder().setRotationDegrees(180).build();
     SimpleExoPlayer mockExoPlayer = mock(SimpleExoPlayer.class);
     when(mockExoPlayer.getVideoFormat()).thenReturn(format);
     final VideoPlayer player = new VideoPlayer(
-            mock(Context.class),
             mock(EventChannel.class),
             mock(TextureRegistry.SurfaceTextureEntry.class),
-            "",
-            "",
-            new HashMap<String, String>(),
             mock(VideoPlayerOptions.class),
             mockExoPlayer
     );
@@ -52,21 +46,17 @@ public class VideoPlayerTest {
     verify(mockEventSink).success(eventCaptor.capture());
     @SuppressWarnings("unchecked") Map<String, Object> capturedEventMap =
             (Map<String, Object>) eventCaptor.getValue();
-    assertEquals(Math.PI, capturedEventMap.get("rotation"));
+    assertEquals(Math.PI, capturedEventMap.get("rotationCorrection"));
   }
 
   @Test
-  public void videoPlayerSendInitializedDoesNotSetRotationForRotationDegreesNot180() {
+  public void videoPlayerSendInitializedDoesNotSetRotationCorrectionForRotationDegreesNot180() {
     Format format = new Format.Builder().setRotationDegrees(90).build();
     SimpleExoPlayer mockExoPlayer = mock(SimpleExoPlayer.class);
     when(mockExoPlayer.getVideoFormat()).thenReturn(format);
     final VideoPlayer player = new VideoPlayer(
-            mock(Context.class),
             mock(EventChannel.class),
             mock(TextureRegistry.SurfaceTextureEntry.class),
-            "",
-            "",
-            new HashMap<String, String>(),
             mock(VideoPlayerOptions.class),
             mockExoPlayer
     );
@@ -80,6 +70,6 @@ public class VideoPlayerTest {
     verify(mockEventSink).success(eventCaptor.capture());
     @SuppressWarnings("unchecked") Map<String, Object> capturedEventMap =
             (Map<String, Object>) eventCaptor.getValue();
-    assertFalse(capturedEventMap.containsKey("rotation"));
+    assertFalse(capturedEventMap.containsKey("rotationCorrection"));
   }
 }

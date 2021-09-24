@@ -67,35 +67,11 @@ final class VideoPlayer {
           String formatHint,
           Map<String, String> httpHeaders,
           VideoPlayerOptions options) {
-    this(
-            context,
-            eventChannel,
-            textureEntry,
-            dataSource,
-            formatHint,
-            httpHeaders,
-            options,
-            null);
-  }
-
-  VideoPlayer(
-      Context context,
-      EventChannel eventChannel,
-      TextureRegistry.SurfaceTextureEntry textureEntry,
-      String dataSource,
-      String formatHint,
-      Map<String, String> httpHeaders,
-      VideoPlayerOptions options,
-      SimpleExoPlayer exoPlayer) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
     this.options = options;
 
-    if (exoPlayer != null) {  // Skip remaining setup in tests if using a mock exoPlayer.
-      this.exoPlayer = exoPlayer;
-      return;
-    }
-    this.exoPlayer = new SimpleExoPlayer.Builder(context).build();
+    exoPlayer = new SimpleExoPlayer.Builder(context).build();
 
     Uri uri = Uri.parse(dataSource);
 
@@ -115,10 +91,22 @@ final class VideoPlayer {
     }
 
     MediaSource mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint, context);
-    this.exoPlayer.setMediaSource(mediaSource);
-    this.exoPlayer.prepare();
+    exoPlayer.setMediaSource(mediaSource);
+    exoPlayer.prepare();
 
     setupVideoPlayer(eventChannel, textureEntry);
+  }
+
+  @VisibleForTesting
+  VideoPlayer(
+      EventChannel eventChannel,
+      TextureRegistry.SurfaceTextureEntry textureEntry,
+      VideoPlayerOptions options,
+      SimpleExoPlayer exoPlayer) {
+    this.eventChannel = eventChannel;
+    this.textureEntry = textureEntry;
+    this.options = options;
+    this.exoPlayer = exoPlayer;
   }
 
   private static boolean isHTTP(Uri uri) {
@@ -306,11 +294,15 @@ final class VideoPlayer {
           width = exoPlayer.getVideoFormat().height;
           height = exoPlayer.getVideoFormat().width;
         }
-        if (rotationDegrees == 180) {
-          event.put("rotation", Math.PI);
-        }
         event.put("width", width);
         event.put("height", height);
+
+        // Rotating the video with ExoPlayer does not seem to be possible with a Surface,
+        // so inform the Flutter code that the widget needs to be rotated to prevent
+        // upside-down playback.
+        if (rotationDegrees == 180) {
+          event.put("rotationCorrection", Math.PI);
+        }
       }
       eventSink.success(event);
     }

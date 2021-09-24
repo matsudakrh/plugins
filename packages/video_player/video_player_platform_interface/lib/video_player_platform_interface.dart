@@ -219,13 +219,13 @@ class VideoEvent {
   ///
   /// The [eventType] argument is required.
   ///
-  /// Depending on the [eventType], the [duration], [size], [rotation], and
-  /// [buffered] arguments can be null.
+  /// Depending on the [eventType], the [duration], [size],
+  /// [rotationCorrection], and [buffered] arguments can be null.
   VideoEvent({
     required this.eventType,
     this.duration,
     this.size,
-    this.rotation,
+    this.rotationCorrection,
     this.buffered,
   });
 
@@ -242,10 +242,10 @@ class VideoEvent {
   /// Only used if [eventType] is [VideoEventType.initialized].
   final Size? size;
 
-  /// Rotation of the video.
+  /// Radians to rotate the video so it is displayed correctly.
   ///
   /// Only used if [eventType] is [VideoEventType.initialized].
-  final double? rotation;
+  final double? rotationCorrection;
 
   /// Buffered parts of the video.
   ///
