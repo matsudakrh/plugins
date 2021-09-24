@@ -60,13 +60,13 @@ final class VideoPlayer {
   private final VideoPlayerOptions options;
 
   VideoPlayer(
-          Context context,
-          EventChannel eventChannel,
-          TextureRegistry.SurfaceTextureEntry textureEntry,
-          String dataSource,
-          String formatHint,
-          Map<String, String> httpHeaders,
-          VideoPlayerOptions options) {
+      Context context,
+      EventChannel eventChannel,
+      TextureRegistry.SurfaceTextureEntry textureEntry,
+      String dataSource,
+      String formatHint,
+      Map<String, String> httpHeaders,
+      VideoPlayerOptions options) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
     this.options = options;
