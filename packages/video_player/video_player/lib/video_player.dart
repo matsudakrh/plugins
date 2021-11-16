@@ -339,7 +339,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           value = value.copyWith(
             duration: event.duration,
             size: event.size,
-            // rotationCorrection: event.rotationCorrection,
+            rotationCorrection: event.rotationCorrection,
             isInitialized: event.duration != null,
           );
           initializingCompleter.complete(null);
