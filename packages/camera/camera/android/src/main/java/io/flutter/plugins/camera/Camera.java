@@ -20,6 +20,7 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.SessionConfiguration;
 import android.media.CamcorderProfile;
+import android.media.EncoderProfiles;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
@@ -35,9 +36,7 @@ import android.view.Display;
 import android.view.Surface;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.lifecycle.Lifecycle;
-import androidx.lifecycle.LifecycleObserver;
-import androidx.lifecycle.OnLifecycleEvent;
+import androidx.annotation.VisibleForTesting;
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodChannel;
@@ -61,6 +60,7 @@ import io.flutter.plugins.camera.features.sensororientation.DeviceOrientationMan
 import io.flutter.plugins.camera.features.sensororientation.SensorOrientationFeature;
 import io.flutter.plugins.camera.features.zoomlevel.ZoomLevelFeature;
 import io.flutter.plugins.camera.media.MediaRecorderBuilder;
+import io.flutter.plugins.camera.types.CameraCaptureProperties;
 import io.flutter.plugins.camera.types.CaptureTimeoutsWrapper;
 import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 import java.io.File;
@@ -81,8 +81,7 @@ interface ErrorCallback {
 
 class Camera
     implements CameraCaptureCallback.CameraCaptureStateListener,
-        ImageReader.OnImageAvailableListener,
-        LifecycleObserver {
+        ImageReader.OnImageAvailableListener {
   private static final String TAG = "Camera";
 
   private static final HashMap<String, Integer> supportedImageFormats;
@@ -125,11 +124,15 @@ class Camera
   private MediaRecorder mediaRecorder;
   /** True when recording video. */
   private boolean recordingVideo;
+  /** True when the preview is paused. */
+  private boolean pausedPreview;
 
   private File captureFile;
 
   /** Holds the current capture timeouts */
   private CaptureTimeoutsWrapper captureTimeouts;
+  /** Holds the last known capture properties */
+  private CameraCaptureProperties captureProps;
 
   private MethodChannel.Result flutterResult;
 
@@ -158,7 +161,8 @@ class Camera
 
     // Create capture callback.
     captureTimeouts = new CaptureTimeoutsWrapper(3000, 3000);
-    cameraCaptureCallback = CameraCaptureCallback.create(this, captureTimeouts);
+    captureProps = new CameraCaptureProperties();
+    cameraCaptureCallback = CameraCaptureCallback.create(this, captureTimeouts, captureProps);
 
     startBackgroundThread();
   }
@@ -196,8 +200,16 @@ class Camera
         ((SensorOrientationFeature) cameraFeatures.getSensorOrientation())
             .getLockedCaptureOrientation();
 
+    MediaRecorderBuilder mediaRecorderBuilder;
+
+    if (Build.VERSION.SDK_INT >= 31) {
+      mediaRecorderBuilder = new MediaRecorderBuilder(getRecordingProfile(), outputFilePath);
+    } else {
+      mediaRecorderBuilder = new MediaRecorderBuilder(getRecordingProfileLegacy(), outputFilePath);
+    }
+
     mediaRecorder =
-        new MediaRecorderBuilder(getRecordingProfile(), outputFilePath)
+        mediaRecorderBuilder
             .setEnableAudio(enableAudio)
             .setMediaOrientation(
                 lockedOrientation == null
@@ -424,8 +436,10 @@ class Camera
     }
 
     try {
-      captureSession.setRepeatingRequest(
-          previewRequestBuilder.build(), cameraCaptureCallback, backgroundHandler);
+      if (!pausedPreview) {
+        captureSession.setRepeatingRequest(
+            previewRequestBuilder.build(), cameraCaptureCallback, backgroundHandler);
+      }
 
       if (onSuccessCallback != null) {
         onSuccessCallback.run();
@@ -568,19 +582,21 @@ class Camera
   }
 
   /** Starts a background thread and its {@link Handler}. */
-  @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
   public void startBackgroundThread() {
-    backgroundHandlerThread = new HandlerThread("CameraBackground");
+    if (backgroundHandlerThread != null) {
+      return;
+    }
+
+    backgroundHandlerThread = HandlerThreadFactory.create("CameraBackground");
     try {
       backgroundHandlerThread.start();
     } catch (IllegalThreadStateException e) {
       // Ignore exception in case the thread has already started.
     }
-    backgroundHandler = new Handler(backgroundHandlerThread.getLooper());
+    backgroundHandler = HandlerFactory.create(backgroundHandlerThread.getLooper());
   }
 
   /** Stops the background thread and its {@link Handler}. */
-  @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
   public void stopBackgroundThread() {
     if (backgroundHandlerThread != null) {
       backgroundHandlerThread.quitSafely();
@@ -830,33 +846,36 @@ class Camera
      * For focus mode an extra step of actually locking/unlocking the
      * focus has to be done, in order to ensure it goes into the correct state.
      */
-    switch (newMode) {
-      case locked:
-        // Perform a single focus trigger.
-        lockAutoFocus();
-        if (captureSession == null) {
-          Log.i(TAG, "[unlockAutoFocus] captureSession null, returning");
-          return;
-        }
-
-        // Set AF state to idle again.
-        previewRequestBuilder.set(
-            CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
-
-        try {
-          captureSession.setRepeatingRequest(
-              previewRequestBuilder.build(), null, backgroundHandler);
-        } catch (CameraAccessException e) {
-          if (result != null) {
-            result.error("setFocusModeFailed", "Error setting focus mode: " + e.getMessage(), null);
+    if (!pausedPreview) {
+      switch (newMode) {
+        case locked:
+          // Perform a single focus trigger.
+          if (captureSession == null) {
+            Log.i(TAG, "[unlockAutoFocus] captureSession null, returning");
+            return;
           }
-          return;
-        }
-        break;
-      case auto:
-        // Cancel current AF trigger and set AF to idle again.
-        unlockAutoFocus();
-        break;
+          lockAutoFocus();
+
+          // Set AF state to idle again.
+          previewRequestBuilder.set(
+              CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+
+          try {
+            captureSession.setRepeatingRequest(
+                previewRequestBuilder.build(), null, backgroundHandler);
+          } catch (CameraAccessException e) {
+            if (result != null) {
+              result.error(
+                  "setFocusModeFailed", "Error setting focus mode: " + e.getMessage(), null);
+            }
+            return;
+          }
+          break;
+        case auto:
+          // Cancel current AF trigger and set AF to idle again.
+          unlockAutoFocus();
+          break;
+      }
     }
 
     if (result != null) {
@@ -895,7 +914,7 @@ class Camera
     exposureOffsetFeature.updateBuilder(previewRequestBuilder);
 
     refreshPreviewCaptureSession(
-        () -> result.success(null),
+        () -> result.success(exposureOffsetFeature.getValue()),
         (code, message) ->
             result.error("setExposureOffsetFailed", "Could not set exposure offset.", null));
   }
@@ -908,8 +927,12 @@ class Camera
     return cameraFeatures.getZoomLevel().getMinimumZoomLevel();
   }
 
-  /** Shortcut to get current recording profile. */
-  CamcorderProfile getRecordingProfile() {
+  /** Shortcut to get current recording profile. Legacy method provides support for SDK < 31. */
+  CamcorderProfile getRecordingProfileLegacy() {
+    return cameraFeatures.getResolution().getRecordingProfileLegacy();
+  }
+
+  EncoderProfiles getRecordingProfile() {
     return cameraFeatures.getResolution().getRecordingProfile();
   }
 
@@ -960,6 +983,19 @@ class Camera
   /** Unlock capture orientation from dart. */
   public void unlockCaptureOrientation() {
     cameraFeatures.getSensorOrientation().unlockCaptureOrientation();
+  }
+
+  /** Pause the preview from dart. */
+  public void pausePreview() throws CameraAccessException {
+    this.pausedPreview = true;
+    this.captureSession.stopRepeating();
+  }
+
+  /** Resume the preview from dart. */
+  public void resumePreview() {
+    this.pausedPreview = false;
+    this.refreshPreviewCaptureSession(
+        null, (code, message) -> dartMessenger.sendCameraErrorEvent(message));
   }
 
   public void startPreview() throws CameraAccessException {
@@ -1018,8 +1054,8 @@ class Camera
   private void setImageStreamImageAvailableListener(final EventChannel.EventSink imageStreamSink) {
     imageStreamReader.setOnImageAvailableListener(
         reader -> {
-          // Use acquireNextImage since image reader is only for one image.
           Image img = reader.acquireNextImage();
+          // Use acquireNextImage since image reader is only for one image.
           if (img == null) return;
 
           List<Map<String, Object>> planes = new ArrayList<>();
@@ -1042,6 +1078,11 @@ class Camera
           imageBuffer.put("height", img.getHeight());
           imageBuffer.put("format", img.getFormat());
           imageBuffer.put("planes", planes);
+          imageBuffer.put("lensAperture", this.captureProps.getLastLensAperture());
+          imageBuffer.put("sensorExposureTime", this.captureProps.getLastSensorExposureTime());
+          Integer sensorSensitivity = this.captureProps.getLastSensorSensitivity();
+          imageBuffer.put(
+              "sensorSensitivity", sensorSensitivity == null ? null : (double) sensorSensitivity);
 
           final Handler handler = new Handler(Looper.getMainLooper());
           handler.post(() -> imageStreamSink.success(imageBuffer));
@@ -1090,5 +1131,39 @@ class Camera
     close();
     flutterTexture.release();
     getDeviceOrientationManager().stop();
+  }
+
+  /** Factory class that assists in creating a {@link HandlerThread} instance. */
+  static class HandlerThreadFactory {
+    /**
+     * Creates a new instance of the {@link HandlerThread} class.
+     *
+     * <p>This method is visible for testing purposes only and should never be used outside this *
+     * class.
+     *
+     * @param name to give to the HandlerThread.
+     * @return new instance of the {@link HandlerThread} class.
+     */
+    @VisibleForTesting
+    public static HandlerThread create(String name) {
+      return new HandlerThread(name);
+    }
+  }
+
+  /** Factory class that assists in creating a {@link Handler} instance. */
+  static class HandlerFactory {
+    /**
+     * Creates a new instance of the {@link Handler} class.
+     *
+     * <p>This method is visible for testing purposes only and should never be used outside this *
+     * class.
+     *
+     * @param looper to give to the Handler.
+     * @return new instance of the {@link Handler} class.
+     */
+    @VisibleForTesting
+    public static Handler create(Looper looper) {
+      return new Handler(looper);
+    }
   }
 }

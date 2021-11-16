@@ -113,6 +113,12 @@ class FakeController extends ValueNotifier<CameraValue>
 
   @override
   Future<void> unlockCaptureOrientation() async {}
+
+  @override
+  Future<void> pausePreview() async {}
+
+  @override
+  Future<void> resumePreview() async {}
 }
 
 void main() {
@@ -215,7 +221,7 @@ void main() {
 
       debugDefaultTargetPlatformOverride = null;
     });
-  });
+  }, skip: kIsWeb);
 
   testWidgets('when not on Android there should not be a rotated box',
       (WidgetTester tester) async {

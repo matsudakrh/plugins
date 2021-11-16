@@ -10,12 +10,15 @@ import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
 import 'package:flutter_plugin_tools/src/common/core.dart';
+import 'package:flutter_plugin_tools/src/common/file_utils.dart';
 import 'package:flutter_plugin_tools/src/common/plugin_utils.dart';
 import 'package:flutter_plugin_tools/src/common/process_runner.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:platform/platform.dart';
 import 'package:quiver/collection.dart';
+
+import 'mocks.dart';
 
 /// Returns the exe name that command will use when running Flutter on
 /// [platform].
@@ -39,6 +42,33 @@ Directory createPackagesDirectory(
   return packagesDir;
 }
 
+/// Details for platform support in a plugin.
+@immutable
+class PlatformDetails {
+  const PlatformDetails(
+    this.type, {
+    this.variants = const <String>[],
+    this.hasNativeCode = true,
+    this.hasDartCode = false,
+  });
+
+  /// The type of support for the platform.
+  final PlatformSupport type;
+
+  /// Any 'supportVariants' to list in the pubspec.
+  final List<String> variants;
+
+  /// Whether or not the plugin includes native code.
+  ///
+  /// Ignored for web, which does not have native code.
+  final bool hasNativeCode;
+
+  /// Whether or not the plugin includes Dart code.
+  ///
+  /// Ignored for web, which always has native code.
+  final bool hasDartCode;
+}
+
 /// Creates a plugin package with the given [name] in [packagesDirectory].
 ///
 /// [platformSupport] is a map of platform string to the support details for
@@ -52,8 +82,8 @@ Directory createFakePlugin(
   Directory parentDirectory, {
   List<String> examples = const <String>['example'],
   List<String> extraFiles = const <String>[],
-  Map<String, PlatformSupport> platformSupport =
-      const <String, PlatformSupport>{},
+  Map<String, PlatformDetails> platformSupport =
+      const <String, PlatformDetails>{},
   String? version = '0.0.1',
 }) {
   final Directory pluginDirectory = createFakePackage(name, parentDirectory,
@@ -90,11 +120,13 @@ Directory createFakePackage(
   final Directory packageDirectory = parentDirectory.childDirectory(name);
   packageDirectory.createSync(recursive: true);
 
-  createFakePubspec(packageDirectory, name: name, isFlutter: isFlutter);
+  createFakePubspec(packageDirectory,
+      name: name, isFlutter: isFlutter, version: version);
   createFakeCHANGELOG(packageDirectory, '''
 ## $version
   * Some changes.
   ''');
+  createFakeAuthors(packageDirectory);
 
   if (examples.length == 1) {
     final Directory exampleDir = packageDirectory.childDirectory(examples.first)
@@ -112,15 +144,10 @@ Directory createFakePackage(
     }
   }
 
-  final FileSystem fileSystem = packageDirectory.fileSystem;
   final p.Context posixContext = p.posix;
   for (final String file in extraFiles) {
-    final List<String> newFilePath = <String>[
-      packageDirectory.path,
-      ...posixContext.split(file)
-    ];
-    final File newFile = fileSystem.file(fileSystem.path.joinAll(newFilePath));
-    newFile.createSync(recursive: true);
+    childFileWithSubcomponents(packageDirectory, posixContext.split(file))
+        .createSync(recursive: true);
   }
 
   return packageDirectory;
@@ -141,8 +168,8 @@ void createFakePubspec(
   String name = 'fake_package',
   bool isFlutter = true,
   bool isPlugin = false,
-  Map<String, PlatformSupport> platformSupport =
-      const <String, PlatformSupport>{},
+  Map<String, PlatformDetails> platformSupport =
+      const <String, PlatformDetails>{},
   String publishTo = 'http://no_pub_server.com',
   String? version,
 }) {
@@ -158,12 +185,11 @@ flutter:
   plugin:
     platforms:
 ''';
-      for (final MapEntry<String, PlatformSupport> platform
+      for (final MapEntry<String, PlatformDetails> platform
           in platformSupport.entries) {
         yaml += _pluginPlatformSection(platform.key, platform.value, name);
       }
     }
-
     yaml += '''
 dependencies:
   flutter:
@@ -183,51 +209,69 @@ publish_to: $publishTo # Hardcoded safeguard to prevent this from somehow being 
   parent.childFile('pubspec.yaml').writeAsStringSync(yaml);
 }
 
+void createFakeAuthors(Directory parent) {
+  final File authorsFile = parent.childFile('AUTHORS');
+  authorsFile.createSync();
+  authorsFile.writeAsStringSync('Google Inc.');
+}
+
 String _pluginPlatformSection(
-    String platform, PlatformSupport type, String packageName) {
-  if (type == PlatformSupport.federated) {
-    return '''
+    String platform, PlatformDetails support, String packageName) {
+  String entry = '';
+  // Build the main plugin entry.
+  if (support.type == PlatformSupport.federated) {
+    entry = '''
       $platform:
         default_package: ${packageName}_$platform
 ''';
+  } else {
+    final List<String> lines = <String>[
+      '      $platform:',
+    ];
+    switch (platform) {
+      case kPlatformAndroid:
+        lines.add('        package: io.flutter.plugins.fake');
+        continue nativeByDefault;
+      nativeByDefault:
+      case kPlatformIos:
+      case kPlatformLinux:
+      case kPlatformMacos:
+      case kPlatformWindows:
+        if (support.hasNativeCode) {
+          final String className =
+              platform == kPlatformIos ? 'FLTFakePlugin' : 'FakePlugin';
+          lines.add('        pluginClass: $className');
+        }
+        if (support.hasDartCode) {
+          lines.add('        dartPluginClass: FakeDartPlugin');
+        }
+        break;
+      case kPlatformWeb:
+        lines.addAll(<String>[
+          '        pluginClass: FakePlugin',
+          '        fileName: ${packageName}_web.dart',
+        ]);
+        break;
+      default:
+        assert(false, 'Unrecognized platform: $platform');
+        break;
+    }
+    entry = lines.join('\n') + '\n';
   }
-  switch (platform) {
-    case kPlatformAndroid:
-      return '''
-      android:
-        package: io.flutter.plugins.fake
-        pluginClass: FakePlugin
+
+  // Add any variants.
+  if (support.variants.isNotEmpty) {
+    entry += '''
+        supportedVariants:
 ''';
-    case kPlatformIos:
-      return '''
-      ios:
-        pluginClass: FLTFakePlugin
+    for (final String variant in support.variants) {
+      entry += '''
+          - $variant
 ''';
-    case kPlatformLinux:
-      return '''
-      linux:
-        pluginClass: FakePlugin
-''';
-    case kPlatformMacos:
-      return '''
-      macos:
-        pluginClass: FakePlugin
-''';
-    case kPlatformWeb:
-      return '''
-      web:
-        pluginClass: FakePlugin
-        fileName: ${packageName}_web.dart
-''';
-    case kPlatformWindows:
-      return '''
-      windows:
-        pluginClass: FakePlugin
-''';
-    default:
-      assert(false);
-      return '';
+    }
   }
+
+  return entry;
 }
 
 typedef _ErrorHandler = void Function(Error error);
@@ -320,7 +364,8 @@ class RecordingProcessRunner extends ProcessRunner {
   Future<io.Process> start(String executable, List<String> args,
       {Directory? workingDirectory}) async {
     recordedCalls.add(ProcessCall(executable, args, workingDirectory?.path));
-    return Future<io.Process>.value(_getProcessToReturn(executable));
+    return Future<io.Process>.value(
+        _getProcessToReturn(executable) ?? MockProcess());
   }
 
   io.Process? _getProcessToReturn(String executable) {

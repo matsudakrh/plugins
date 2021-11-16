@@ -43,7 +43,7 @@ class CameraPreview extends StatelessWidget {
   }
 
   Widget _wrapInRotatedBox({required Widget child}) {
-    if (defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return child;
     }
 
@@ -71,7 +71,8 @@ class CameraPreview extends StatelessWidget {
   DeviceOrientation _getApplicableOrientation() {
     return controller.value.isRecordingVideo
         ? controller.value.recordingOrientation!
-        : (controller.value.lockedCaptureOrientation ??
+        : (controller.value.previewPauseOrientation ??
+            controller.value.lockedCaptureOrientation ??
             controller.value.deviceOrientation);
   }
 }

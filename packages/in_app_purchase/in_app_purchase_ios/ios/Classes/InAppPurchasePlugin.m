@@ -198,11 +198,28 @@
   payment.applicationUsername = [paymentMap objectForKey:@"applicationUsername"];
   NSNumber *quantity = [paymentMap objectForKey:@"quantity"];
   payment.quantity = (quantity != nil) ? quantity.integerValue : 1;
-  if (@available(iOS 8.3, *)) {
-    NSNumber *simulatesAskToBuyInSandbox = [paymentMap objectForKey:@"simulatesAskToBuyInSandbox"];
-    payment.simulatesAskToBuyInSandbox = (id)simulatesAskToBuyInSandbox == (id)[NSNull null]
-                                             ? NO
-                                             : [simulatesAskToBuyInSandbox boolValue];
+  NSNumber *simulatesAskToBuyInSandbox = [paymentMap objectForKey:@"simulatesAskToBuyInSandbox"];
+  payment.simulatesAskToBuyInSandbox = (id)simulatesAskToBuyInSandbox == (id)[NSNull null]
+                                           ? NO
+                                           : [simulatesAskToBuyInSandbox boolValue];
+
+  if (@available(iOS 12.2, *)) {
+    NSString *error = nil;
+    SKPaymentDiscount *paymentDiscount = [FIAObjectTranslator
+        getSKPaymentDiscountFromMap:[paymentMap objectForKey:@"paymentDiscount"]
+                          withError:&error];
+
+    if (error) {
+      result([FlutterError
+          errorWithCode:@"storekit_invalid_payment_discount_object"
+                message:[NSString stringWithFormat:@"You have requested a payment and specified a "
+                                                   @"payment discount with invalid properties. %@",
+                                                   error]
+                details:call.arguments]);
+      return;
+    }
+
+    payment.paymentDiscount = paymentDiscount;
   }
 
   if (![self.paymentQueueHandler addPayment:payment]) {

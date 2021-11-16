@@ -177,6 +177,11 @@ void main() {
       expect(find.byType(Text), findsNothing);
     });
 
+    testWidgets('handles empty text', (WidgetTester tester) async {
+      await tester.pumpWidget(MaterialApp(home: ClosedCaption(text: '')));
+      expect(find.byType(Text), findsNothing);
+    });
+
     testWidgets('Passes text contrast ratio guidelines',
         (WidgetTester tester) async {
       final String text = 'foo';
@@ -299,6 +304,15 @@ void main() {
       });
     });
 
+    test('contentUri', () async {
+      final VideoPlayerController controller =
+          VideoPlayerController.contentUri(Uri.parse('content://video'));
+      await controller.initialize();
+
+      expect(fakeVideoPlayerPlatform.dataSourceDescriptions[0].uri,
+          'content://video');
+    });
+
     test('dispose', () async {
       final VideoPlayerController controller = VideoPlayerController.network(
         'https://127.0.0.1',
@@ -331,6 +345,17 @@ void main() {
               .calls[fakeVideoPlayerPlatform.calls.length - 2],
           'play');
       expect(fakeVideoPlayerPlatform.calls.last, 'setPlaybackSpeed');
+    });
+
+    test('play before initialized does not call platform', () async {
+      final VideoPlayerController controller = VideoPlayerController.network(
+        'https://127.0.0.1',
+      );
+      expect(controller.value.isInitialized, isFalse);
+
+      await controller.play();
+
+      expect(fakeVideoPlayerPlatform.calls, isEmpty);
     });
 
     test('play restarts from beginning if video is at end', () async {
@@ -386,6 +411,17 @@ void main() {
         await controller.seekTo(const Duration(milliseconds: 500));
 
         expect(await controller.position, const Duration(milliseconds: 500));
+      });
+
+      test('before initialized does not call platform', () async {
+        final VideoPlayerController controller = VideoPlayerController.network(
+          'https://127.0.0.1',
+        );
+        expect(controller.value.isInitialized, isFalse);
+
+        await controller.seekTo(const Duration(milliseconds: 500));
+
+        expect(fakeVideoPlayerPlatform.calls, isEmpty);
       });
 
       test('clamps values that are too high or low', () async {
@@ -454,6 +490,60 @@ void main() {
         expect(controller.value.playbackSpeed, 1.0);
 
         expect(() => controller.setPlaybackSpeed(-1), throwsArgumentError);
+      });
+    });
+
+    group('scrubbing', () {
+      testWidgets('restarts on release if already playing',
+          (WidgetTester tester) async {
+        final VideoPlayerController controller = VideoPlayerController.network(
+          'https://127.0.0.1',
+        );
+        await controller.initialize();
+        final progressWidget =
+            VideoProgressIndicator(controller, allowScrubbing: true);
+
+        await tester.pumpWidget(Directionality(
+          textDirection: TextDirection.ltr,
+          child: progressWidget,
+        ));
+
+        await controller.play();
+        expect(controller.value.isPlaying, isTrue);
+
+        final Rect progressRect = tester.getRect(find.byWidget(progressWidget));
+        await tester.dragFrom(progressRect.center, Offset(1.0, 0.0));
+        await tester.pumpAndSettle();
+
+        expect(controller.value.position, lessThan(controller.value.duration));
+        expect(controller.value.isPlaying, isTrue);
+
+        await controller.pause();
+      });
+
+      testWidgets('does not restart when dragging to end',
+          (WidgetTester tester) async {
+        final VideoPlayerController controller = VideoPlayerController.network(
+          'https://127.0.0.1',
+        );
+        await controller.initialize();
+        final progressWidget =
+            VideoProgressIndicator(controller, allowScrubbing: true);
+
+        await tester.pumpWidget(Directionality(
+          textDirection: TextDirection.ltr,
+          child: progressWidget,
+        ));
+
+        await controller.play();
+        expect(controller.value.isPlaying, isTrue);
+
+        final Rect progressRect = tester.getRect(find.byWidget(progressWidget));
+        await tester.dragFrom(progressRect.center, progressRect.centerRight);
+        await tester.pumpAndSettle();
+
+        expect(controller.value.position, controller.value.duration);
+        expect(controller.value.isPlaying, isFalse);
       });
     });
 

@@ -39,6 +39,7 @@ class PubspecCheckCommand extends PackageLoopingCommand {
     'flutter:',
     'dependencies:',
     'dev_dependencies:',
+    'false_secrets:',
   ];
 
   static const List<String> _majorPackageSections = <String>[
@@ -46,6 +47,7 @@ class PubspecCheckCommand extends PackageLoopingCommand {
     'dependencies:',
     'dev_dependencies:',
     'flutter:',
+    'false_secrets:',
   ];
 
   static const String _expectedIssueLinkFormat =
@@ -97,6 +99,16 @@ class PubspecCheckCommand extends PackageLoopingCommand {
       printError('$listIndentation${sectionOrder.join('\n$listIndentation')}');
     }
 
+    if (isPlugin) {
+      final String? error = _checkForImplementsError(pubspec, package: package);
+      if (error != null) {
+        printError('$indentation$error');
+        passing = false;
+      }
+    }
+
+    // Ignore metadata that's only relevant for published packages if the
+    // packages is not intended for publishing.
     if (pubspec.publishTo != 'none') {
       final List<String> repositoryErrors =
           _checkForRepositoryLinkErrors(pubspec, package: package);
@@ -115,11 +127,14 @@ class PubspecCheckCommand extends PackageLoopingCommand {
         passing = false;
       }
 
-      if (isPlugin) {
-        final String? error =
-            _checkForImplementsError(pubspec, package: package);
-        if (error != null) {
-          printError('$indentation$error');
+      // Don't check descriptions for federated package components other than
+      // the app-facing package, since they are unlisted, and are expected to
+      // have short descriptions.
+      if (!package.isPlatformInterface && !package.isPlatformImplementation) {
+        final String? descriptionError =
+            _checkDescription(pubspec, package: package);
+        if (descriptionError != null) {
+          printError('$indentation$descriptionError');
           passing = false;
         }
       }
@@ -162,7 +177,7 @@ class PubspecCheckCommand extends PackageLoopingCommand {
       errorMessages.add('Missing "repository"');
     } else {
       final String relativePackagePath =
-          path.relative(package.path, from: packagesDir.parent.path);
+          getRelativePosixPath(package.directory, from: packagesDir.parent);
       if (!pubspec.repository!.path.endsWith(relativePackagePath)) {
         errorMessages
             .add('The "repository" link should end with the package path.');
@@ -175,6 +190,27 @@ class PubspecCheckCommand extends PackageLoopingCommand {
     }
 
     return errorMessages;
+  }
+
+  // Validates the "description" field for a package, returning an error
+  // string if there are any issues.
+  String? _checkDescription(
+    Pubspec pubspec, {
+    required RepositoryPackage package,
+  }) {
+    final String? description = pubspec.description;
+    if (description == null) {
+      return 'Missing "description"';
+    }
+
+    if (description.length < 60) {
+      return '"description" is too short. pub.dev recommends package '
+          'descriptions of 60-180 characters.';
+    }
+    if (description.length > 180) {
+      return '"description" is too long. pub.dev recommends package '
+          'descriptions of 60-180 characters.';
+    }
   }
 
   bool _checkIssueLink(Pubspec pubspec) {
@@ -209,17 +245,11 @@ class PubspecCheckCommand extends PackageLoopingCommand {
   // Returns true if [packageName] appears to be an implementation package
   // according to repository conventions.
   bool _isImplementationPackage(RepositoryPackage package) {
-    // An implementation package should be in a group folder...
-    final Directory parentDir = package.directory.parent;
-    if (parentDir.path == packagesDir.path) {
+    if (!package.isFederated) {
       return false;
     }
     final String packageName = package.directory.basename;
-    final String parentName = parentDir.basename;
-    // ... whose name is a prefix of the package name.
-    if (!packageName.startsWith(parentName)) {
-      return false;
-    }
+    final String parentName = package.directory.parent.basename;
     // A few known package names are not implementation packages; assume
     // anything else is. (This is done instead of listing known implementation
     // suffixes to allow for non-standard suffixes; e.g., to put several

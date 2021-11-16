@@ -2,6 +2,8 @@
 
 * Remove references to the V1 Android embedding.
 * Updated Android lint settings.
+* Specify Java 8 for Android build.
+* Removed `-Werror` in Android builds.
 
 ## 2.0.2
 
